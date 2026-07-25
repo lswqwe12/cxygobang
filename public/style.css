@@ -1,0 +1,145 @@
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: #f0e0c8;
+  color: #3a2f22;
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 40px;
+  width: 100%;
+  max-width: 720px;
+}
+
+.hidden { display: none !important; }
+
+h1 { margin: 0 0 4px; font-size: 28px; }
+.subtitle { margin: 0 0 18px; color: #7a6647; }
+
+.card {
+  background: #faf3e3;
+  border: 1px solid #d8c39a;
+  border-radius: 10px;
+  padding: 18px 22px;
+  margin-bottom: 18px;
+  width: 100%;
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+.card h2 { margin: 0 0 6px; font-size: 20px; }
+.card h3 { margin: 10px 0 6px; font-size: 16px; }
+.card p { margin: 0 0 12px; color: #7a6647; font-size: 14px; }
+
+label { display: block; margin: 8px 0; font-size: 14px; }
+input, select {
+  font-size: 15px;
+  padding: 6px 10px;
+  border: 1px solid #c9b48a;
+  border-radius: 6px;
+  background: #fff;
+  margin-left: 6px;
+}
+
+.cols { display: flex; gap: 28px; flex-wrap: wrap; }
+.cols > div { flex: 1; min-width: 220px; }
+
+button {
+  font-size: 15px;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 6px;
+  background: #8a6d3b;
+  color: #fff;
+  cursor: pointer;
+  margin-top: 8px;
+}
+button:hover { background: #6f5730; }
+button:disabled { background: #bda983; cursor: not-allowed; }
+button.primary { background: #2e7d32; }
+button.primary:hover { background: #1b5e20; }
+
+.error { color: #c62828; min-height: 18px; }
+.hint { color: #7a6647; font-size: 14px; }
+.code {
+  font-family: ui-monospace, Menlo, monospace;
+  background: #efe3c8;
+  border: 1px dashed #b09a6d;
+  border-radius: 6px;
+  padding: 2px 10px;
+  letter-spacing: 2px;
+}
+
+#playerList { list-style: none; padding: 0; width: 100%; max-width: 380px; }
+#playerList li {
+  background: #faf3e3;
+  border: 1px solid #d8c39a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#playerList li .ready-flag { margin-left: auto; color: #2e7d32; font-weight: 600; }
+#playerList li .not-ready { margin-left: auto; color: #a08c66; }
+
+.row { display: flex; gap: 10px; margin-top: 14px; }
+
+#gameHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  min-height: 30px;
+}
+#status { font-size: 18px; display: flex; align-items: center; gap: 8px; }
+
+#board {
+  background: #dcb468;
+  border: 2px solid #8a6d3b;
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,.25);
+  width: 100%;
+  max-width: 620px;
+  height: auto;               /* keep aspect ratio when scaled down */
+  touch-action: none; /* board handles its own gestures; no page scroll/zoom from it */
+}
+
+#undoBanner {
+  margin-top: 12px;
+  background: #fff8e1;
+  border: 1px solid #e0c97f;
+  border-radius: 8px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#undoBanner button { margin-top: 0; }
+
+.piece-dot {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid #333;
+  flex: none;
+}
+.legend { margin-top: 12px; font-size: 14px; color: #5a4632; display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+.legend span { display: flex; align-items: center; gap: 5px; }
+
+@media (max-width: 480px) {
+  .screen { padding: 14px 10px 32px; }
+  h1 { font-size: 22px; }
+  #status { font-size: 15px; }
+  .card { padding: 14px 16px; }
+  button { padding: 10px 16px; }
+  .legend { gap: 10px; font-size: 12px; }
+}

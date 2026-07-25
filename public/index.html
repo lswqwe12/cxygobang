@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gobang — 2 to 4 Players</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============ HOME ============ -->
+<section id="home" class="screen">
+  <h1>Gobang</h1>
+  <p class="subtitle">Five in a row wins — for 2 to 4 players</p>
+
+  <div class="card">
+    <h2>Local Play</h2>
+    <p>Play hotseat on this device.</p>
+    <label>Players:
+      <select id="localCount">
+        <option value="2">2</option>
+        <option value="3" selected>3</option>
+        <option value="4">4</option>
+      </select>
+    </label>
+    <button id="localStartBtn" class="primary">Start Local Game</button>
+  </div>
+
+  <div class="card">
+    <h2>Online Play</h2>
+    <p>Create a room or join one with a code + password.</p>
+    <label>Nickname: <input id="nickname" maxlength="20" placeholder="Your name"></label>
+
+    <div class="cols">
+      <div>
+        <h3>Create Room</h3>
+        <label>Players:
+          <select id="createCount">
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="4">4</option>
+          </select>
+        </label>
+        <label>Password: <input id="createPwd" type="password" placeholder="(optional)"></label>
+        <button id="createBtn" class="primary">Create</button>
+      </div>
+      <div>
+        <h3>Join Room</h3>
+        <label>Room Code: <input id="joinCode" maxlength="5" placeholder="e.g. K7Q2M" style="text-transform:uppercase"></label>
+        <label>Password: <input id="joinPwd" type="password" placeholder="(optional)"></label>
+        <button id="joinBtn" class="primary">Join</button>
+      </div>
+    </div>
+    <p id="homeError" class="error"></p>
+  </div>
+</section>
+
+<!-- ============ LOBBY ============ -->
+<section id="lobby" class="screen hidden">
+  <h1>Room <span id="lobbyCode" class="code"></span></h1>
+  <p class="subtitle">Share the code and password with your friends. The match starts once everyone is ready.</p>
+  <ul id="playerList"></ul>
+  <div class="row">
+    <button id="readyBtn" class="primary">Ready</button>
+    <button id="lobbyLeaveBtn">Leave</button>
+  </div>
+  <p id="lobbyHint" class="hint"></p>
+</section>
+
+<!-- ============ GAME ============ -->
+<section id="game" class="screen hidden">
+  <div id="gameHeader">
+    <span id="roomTag" class="code hidden"></span>
+    <div id="status"></div>
+  </div>
+  <canvas id="board"></canvas>
+  <div id="undoBanner" class="hidden">
+    <span id="undoText"></span>
+    <button id="undoAcceptBtn" class="primary">Accept</button>
+    <button id="undoRejectBtn">Reject</button>
+  </div>
+  <div class="row">
+    <button id="undoBtn">Undo</button>
+    <button id="againBtn" class="primary hidden">Play Again</button>
+    <button id="leaveBtn">Leave</button>
+  </div>
+  <div id="legend" class="legend"></div>
+</section>
+
+<script src="client.js"></script>
+</body>
+</html>

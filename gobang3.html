@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Three-Player Gobang</title>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #f0e0c8;
+    margin: 0;
+    padding: 20px;
+    user-select: none;
+  }
+  h1 { margin: 0 0 10px; font-size: 22px; }
+  #status {
+    font-size: 18px;
+    margin-bottom: 12px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .piece-dot {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: inline-block;
+    border: 1px solid #333;
+  }
+  #board {
+    background: #dcb468;
+    border: 2px solid #8a6d3b;
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,.25);
+  }
+  #controls { margin-top: 14px; display: flex; gap: 10px; }
+  button {
+    font-size: 15px;
+    padding: 8px 18px;
+    border: none;
+    border-radius: 6px;
+    background: #8a6d3b;
+    color: #fff;
+    cursor: pointer;
+  }
+  button:hover { background: #6f5730; }
+  button:disabled { background: #bda983; cursor: not-allowed; }
+  .legend { margin-top: 12px; font-size: 14px; color: #5a4632; display: flex; gap: 18px; }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+</style>
+</head>
+<body>
+<h1>Three-Player Gobang</h1>
+<div id="status"></div>
+<canvas id="board"></canvas>
+<div id="controls">
+  <button id="undoBtn">Undo</button>
+  <button id="restartBtn">Restart</button>
+</div>
+<div class="legend">
+  <span><i class="piece-dot" style="background:#222"></i>Player 1 (Black)</span>
+  <span><i class="piece-dot" style="background:#fff"></i>Player 2 (White)</span>
+  <span><i class="piece-dot" style="background:#d33"></i>Player 3 (Red)</span>
+</div>
+
+<script>
+const SIZE = 15;            // 15x15 intersections
+const CELL = 40;            // px per cell
+const MARGIN = 30;          // px margin around grid
+const DIM = MARGIN * 2 + CELL * (SIZE - 1);
+
+const PLAYERS = [
+  { name: "Player 1 (Black)", color: "#222222" },
+  { name: "Player 2 (White)", color: "#ffffff" },
+  { name: "Player 3 (Red)",   color: "#dd3333" },
+];
+
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const statusEl = document.getElementById("status");
+const undoBtn = document.getElementById("undoBtn");
+const restartBtn = document.getElementById("restartBtn");
+
+// HiDPI rendering
+const dpr = window.devicePixelRatio || 1;
+canvas.width = DIM * dpr;
+canvas.height = DIM * dpr;
+canvas.style.width = DIM + "px";
+canvas.style.height = DIM + "px";
+ctx.scale(dpr, dpr);
+
+let board, moves, current, winner, winLine;
+
+function reset() {
+  board = Array.from({ length: SIZE }, () => Array(SIZE).fill(-1));
+  moves = [];        // stack of {r, c, player}
+  current = 0;       // index into PLAYERS
+  winner = -1;
+  winLine = null;
+  updateStatus();
+  undoBtn.disabled = true;
+  draw();
+}
+
+function updateStatus() {
+  if (winner >= 0) {
+    statusEl.innerHTML =
+      `<i class="piece-dot" style="background:${PLAYERS[winner].color}"></i>` +
+      `${PLAYERS[winner].name} wins!`;
+  } else {
+    statusEl.innerHTML =
+      `<i class="piece-dot" style="background:${PLAYERS[current].color}"></i>` +
+      `${PLAYERS[current].name}'s turn`;
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, DIM, DIM);
+
+  // grid lines
+  ctx.strokeStyle = "#5a4632";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < SIZE; i++) {
+    const p = MARGIN + i * CELL;
+    ctx.beginPath(); ctx.moveTo(MARGIN, p); ctx.lineTo(DIM - MARGIN, p); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p, MARGIN); ctx.lineTo(p, DIM - MARGIN); ctx.stroke();
+  }
+
+  // star points (hoshi)
+  const stars = [3, 7, 11];
+  ctx.fillStyle = "#5a4632";
+  for (const r of stars) for (const c of stars) {
+    ctx.beginPath();
+    ctx.arc(MARGIN + c * CELL, MARGIN + r * CELL, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // pieces
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (board[r][c] >= 0) drawPiece(r, c, PLAYERS[board[r][c]].color);
+    }
+  }
+
+  // highlight last move
+  if (moves.length && winner < 0) {
+    const { r, c } = moves[moves.length - 1];
+    ctx.strokeStyle = "#0a0";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(MARGIN + c * CELL - 8, MARGIN + r * CELL - 8, 16, 16);
+  }
+
+  // highlight winning line
+  if (winLine) {
+    ctx.strokeStyle = "#ff0";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(MARGIN + winLine[0].c * CELL, MARGIN + winLine[0].r * CELL);
+    ctx.lineTo(MARGIN + winLine[1].c * CELL, MARGIN + winLine[1].r * CELL);
+    ctx.stroke();
+  }
+}
+
+function drawPiece(r, c, color) {
+  const x = MARGIN + c * CELL, y = MARGIN + r * CELL, rad = CELL / 2 - 3;
+  const g = ctx.createRadialGradient(x - rad / 3, y - rad / 3, rad / 6, x, y, rad);
+  g.addColorStop(0, lighten(color));
+  g.addColorStop(1, color);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, rad, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,.5)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function lighten(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = v => Math.min(255, v + 70);
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+
+function checkWin(r, c, p) {
+  const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+  for (const [dr, dc] of dirs) {
+    let cells = [{ r, c }];
+    for (const s of [1, -1]) {
+      let nr = r + dr * s, nc = c + dc * s;
+      while (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && board[nr][nc] === p) {
+        cells.push({ r: nr, c: nc });
+        nr += dr * s; nc += dc * s;
+      }
+    }
+    if (cells.length >= 5) {
+      cells.sort((a, b) => a.r - b.r || a.c - b.c);
+      return [cells[0], cells[cells.length - 1]];
+    }
+  }
+  return null;
+}
+
+canvas.addEventListener("click", e => {
+  if (winner >= 0) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  const c = Math.round((x - MARGIN) / CELL);
+  const r = Math.round((y - MARGIN) / CELL);
+  if (r < 0 || r >= SIZE || c < 0 || c >= SIZE || board[r][c] >= 0) return;
+
+  board[r][c] = current;
+  moves.push({ r, c, player: current });
+  undoBtn.disabled = false;
+
+  winLine = checkWin(r, c, current);
+  if (winLine) {
+    winner = current;
+  } else if (moves.length === SIZE * SIZE) {
+    statusEl.textContent = "Draw! Board is full.";
+    draw();
+    return;
+  } else {
+    current = (current + 1) % PLAYERS.length;
+  }
+  updateStatus();
+  draw();
+});
+
+undoBtn.addEventListener("click", () => {
+  if (!moves.length) return;
+  const { r, c, player } = moves.pop();
+  board[r][c] = -1;
+  current = player;      // turn returns to the player who made that move
+  winner = -1;
+  winLine = null;
+  undoBtn.disabled = moves.length === 0;
+  updateStatus();
+  draw();
+});
+
+restartBtn.addEventListener("click", reset);
+
+reset();
+</script>
+</body>
+</html>
