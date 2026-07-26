@@ -42,6 +42,7 @@ let ws = null;
 let myIndex = -1;
 let roomCode = "";
 let undoPendingFrom = -1;    // seat index with a pending undo request (-1 = none)
+const departedSet = new Set(); // seats disconnected mid-game; game pauses while non-empty
 
 function newBoard() {
   board = Array.from({ length: SIZE }, () => Array(SIZE).fill(-1));
@@ -50,6 +51,7 @@ function newBoard() {
   winner = -1;
   winLine = null;
   undoPendingFrom = -1;
+  departedSet.clear();
 }
 
 // ---------- rendering ----------
@@ -137,7 +139,8 @@ function refreshUndoButton() {
     undoBtn.disabled = !last || winner !== -1;
   } else {
     undoBtn.disabled =
-      !last || winner !== -1 || last.player !== myIndex || undoPendingFrom !== -1;
+      !last || winner !== -1 || last.player !== myIndex ||
+      undoPendingFrom !== -1 || departedSet.size > 0;
   }
 }
 
@@ -285,12 +288,37 @@ function renderLobby(msg) {
   $("readyBtn").disabled = !!(me && me.ready);
 }
 
+function renderPauseBanner() {
+  const el = $("pauseBanner");
+  if (!departedSet.size) {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+    return;
+  }
+  el.classList.remove("hidden");
+  el.innerHTML = [...departedSet]
+    .map(
+      (i) =>
+        `<div class="pause-row">⏳ Waiting for <b>${names[i] || COLORS[i].name}</b> to reconnect…` +
+        `<button data-idx="${i}" class="continueBtn">Continue without them</button></div>`
+    )
+    .join("");
+  el.querySelectorAll(".continueBtn").forEach((b) => {
+    b.onclick = () => sendMsg({ type: "continue_without", index: Number(b.dataset.idx) });
+  });
+}
+
+function markSeatLeft(i) {
+  if (names[i] && !names[i].endsWith("(left)")) names[i] += " (left)";
+}
+
 function handleMessage(msg) {
   switch (msg.type) {
     case "created":
     case "joined":
       myIndex = msg.playerIndex;
-      show("lobby");
+      roomCode = msg.code;
+      if (!msg.rejoined) show("lobby"); // rejoins go straight to the game via 'sync'
       break;
 
     case "lobby":
@@ -306,6 +334,7 @@ function handleMessage(msg) {
       $("roomTag").classList.remove("hidden");
       againBtn.classList.add("hidden");
       renderLegend();
+      renderPauseBanner();
       updateStatus();
       show("game");
       draw();
@@ -372,9 +401,57 @@ function handleMessage(msg) {
       if (msg.count >= msg.total) againBtn.disabled = true;
       break;
 
-    case "player_left":
-      names[msg.index] = (names[msg.index] || COLORS[msg.index].name) + " (left)";
-      if (msg.next >= 0 && winner === -1) current = msg.next;
+    case "sync": // mid-game rejoin: rebuild the full board state
+      mode = "online";
+      playerCount = msg.playerCount;
+      names = msg.players.map((n, i) =>
+        msg.eliminated && msg.eliminated[i] ? n + " (left)" : n
+      );
+      newBoard();
+      for (const p of msg.pieces) {
+        board[p.r][p.c] = p.player;
+        moves.push({ r: p.r, c: p.c, player: p.player });
+      }
+      current = msg.current;
+      winner = msg.winner;
+      winLine = msg.winLine || null;
+      (msg.departed || []).forEach((i) => departedSet.add(i));
+      $("roomTag").textContent = "Room " + roomCode;
+      $("roomTag").classList.remove("hidden");
+      againBtn.classList.toggle("hidden", winner === -1);
+      renderLegend();
+      renderPauseBanner();
+      updateStatus();
+      show("game");
+      draw();
+      break;
+
+    case "player_disconnected": // accidental drop: pause and wait for rejoin
+      departedSet.add(msg.index);
+      renderPauseBanner();
+      updateStatus();
+      break;
+
+    case "player_rejoined":
+      departedSet.delete(msg.index);
+      renderPauseBanner();
+      updateStatus();
+      draw();
+      break;
+
+    case "continued": // the room voted to continue without a departed player
+      departedSet.delete(msg.index);
+      markSeatLeft(msg.index);
+      if (winner === -1) current = msg.next;
+      renderLegend();
+      renderPauseBanner();
+      updateStatus();
+      draw();
+      break;
+
+    case "player_eliminated": // another player left intentionally
+      markSeatLeft(msg.index);
+      if (winner === -1) current = msg.next;
       renderLegend();
       updateStatus();
       draw();
@@ -403,10 +480,48 @@ function leaveToHome() {
   }
   myIndex = -1;
   roomCode = "";
+  departedSet.clear();
+  $("pauseBanner").classList.add("hidden");
   $("undoBanner").classList.add("hidden");
   homeError("");
   show("home");
 }
+
+// Leave confirmation modal: the confirm button only becomes clickable after a
+// 3-second countdown, preventing accidental taps from exiting the game.
+let leaveTimer = null;
+
+function openLeaveModal() {
+  const btn = $("leaveConfirmBtn");
+  btn.disabled = true;
+  let n = 3;
+  btn.textContent = `Confirm (${n}s)`;
+  $("leaveModal").classList.remove("hidden");
+  clearInterval(leaveTimer);
+  leaveTimer = setInterval(() => {
+    n--;
+    if (n <= 0) {
+      clearInterval(leaveTimer);
+      btn.disabled = false;
+      btn.textContent = "Confirm Leave";
+    } else {
+      btn.textContent = `Confirm (${n}s)`;
+    }
+  }, 1000);
+}
+
+function closeLeaveModal() {
+  clearInterval(leaveTimer);
+  $("leaveModal").classList.add("hidden");
+}
+
+$("leaveCancelBtn").addEventListener("click", closeLeaveModal);
+$("leaveConfirmBtn").addEventListener("click", () => {
+  closeLeaveModal();
+  if (ws && ws.readyState === 1) sendMsg({ type: "leave" });
+  // give the leave message a moment to flush before closing the socket
+  setTimeout(leaveToHome, 60);
+});
 
 // ---------- events ----------
 // Tap detection: a piece is placed only on a clean single-finger tap.
@@ -440,7 +555,7 @@ canvas.addEventListener("pointercancel", endPointer);
 canvas.addEventListener("pointerup", (e) => {
   const wasTap = tapCandidate && e.pointerId === tapCandidate.id;
   endPointer(e);
-  if (!wasTap || winner !== -1) return;
+  if (!wasTap || winner !== -1 || departedSet.size) return;
 
   // Map the displayed (possibly scaled-down) position back to board coordinates.
   const rect = canvas.getBoundingClientRect();
@@ -487,7 +602,7 @@ $("localStartBtn").addEventListener("click", startLocal);
 $("createBtn").addEventListener("click", createRoom);
 $("joinBtn").addEventListener("click", joinRoom);
 $("readyBtn").addEventListener("click", () => sendMsg({ type: "ready" }));
-$("lobbyLeaveBtn").addEventListener("click", leaveToHome);
-$("leaveBtn").addEventListener("click", leaveToHome);
+$("lobbyLeaveBtn").addEventListener("click", openLeaveModal);
+$("leaveBtn").addEventListener("click", openLeaveModal);
 
 show("home");

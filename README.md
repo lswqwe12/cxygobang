@@ -14,6 +14,13 @@ A Gobang (Gomoku / Five-in-a-Row) game supporting **2, 3, or 4 players**, playab
   - The match starts automatically when **all seats are filled and everyone is ready**.
   - Late joining during an ongoing match is not allowed.
   - If the room owner goes offline, the room is terminated and everyone is sent back to the home screen.
+- **Reconnection**: if a player is disconnected accidentally (network drop, closed tab),
+  their seat is reserved and the match pauses. They can rejoin with the same room code,
+  password and nickname. The remaining players can either wait for them or click
+  **Continue without them** to forfeit that seat and resume the match.
+- **Safe leaving**: the Leave button opens a confirmation dialog whose confirm button
+  only unlocks after a 3-second countdown, preventing accidental exits. Leaving
+  intentionally during a match forfeits the seat permanently (no rejoin).
 - **Standard Gobang rules**: first to make an unbroken line of 5 pieces
   (horizontal, vertical, or diagonal) wins; a full board is a draw.
 - **Move retraction (undo)**:
@@ -82,15 +89,18 @@ Client → Server:
 | Message | Payload | Purpose |
 |---|---|---|
 | `create` | `name, password, playerCount` | Create a room |
-| `join` | `name, code, password` | Join a room |
+| `join` | `name, code, password` | Join a room / rejoin a reserved seat mid-game |
 | `ready` | — | Mark ready in the lobby |
 | `move` | `r, c` | Place a piece |
 | `undo_request` | — | Ask to retract your last move |
 | `undo_response` | `accept` | Vote on an undo request |
 | `play_again` | — | Vote for a rematch |
+| `leave` | — | Leave intentionally (seat is forfeited) |
+| `continue_without` | `index` | Resume the match without a disconnected player |
 
 Server → Client: `created`, `joined`, `lobby`, `start`, `move`, `win`, `draw`,
-`undo_request`, `undo_applied`, `undo_rejected`, `play_again`, `player_left`,
+`undo_request`, `undo_applied`, `undo_rejected`, `play_again`, `sync`,
+`player_disconnected`, `player_rejoined`, `player_eliminated`, `continued`,
 `room_closed`, `error`.
 
 The server is authoritative: it validates turns, occupied cells, win detection,

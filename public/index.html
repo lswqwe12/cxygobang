@@ -73,6 +73,7 @@
     <span id="roomTag" class="code hidden"></span>
     <div id="status"></div>
   </div>
+  <div id="pauseBanner" class="hidden"></div>
   <canvas id="board"></canvas>
   <div id="undoBanner" class="hidden">
     <span id="undoText"></span>
@@ -88,5 +89,19 @@
 </section>
 
 <script src="client.js"></script>
+
+<!-- ============ LEAVE CONFIRMATION MODAL ============ -->
+<div id="leaveModal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>Leave the game?</h2>
+    <p>If you leave during a match, your seat is forfeited and cannot be recovered.
+       If you are disconnected accidentally, you can rejoin with the same room code,
+       password and nickname.</p>
+    <div class="row">
+      <button id="leaveConfirmBtn" class="danger" disabled>Confirm (3s)</button>
+      <button id="leaveCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

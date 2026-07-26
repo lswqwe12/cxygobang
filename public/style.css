@@ -64,6 +64,52 @@ button:hover { background: #6f5730; }
 button:disabled { background: #bda983; cursor: not-allowed; }
 button.primary { background: #2e7d32; }
 button.primary:hover { background: #1b5e20; }
+button.danger { background: #c62828; }
+button.danger:hover { background: #8e1c1c; }
+button.danger:disabled { background: #dba3a3; cursor: not-allowed; }
+
+/* leave confirmation modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+.modal {
+  background: #faf3e3;
+  border-radius: 10px;
+  padding: 22px 26px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 8px 30px rgba(0,0,0,.35);
+}
+.modal h2 { margin: 0 0 10px; font-size: 20px; }
+.modal p { margin: 0 0 8px; font-size: 14px; color: #6a5a40; line-height: 1.5; }
+.modal .row { justify-content: flex-end; }
+
+/* reconnection pause banner */
+#pauseBanner {
+  margin-bottom: 12px;
+  width: 100%;
+  max-width: 620px;
+}
+.pause-row {
+  background: #fff8e1;
+  border: 1px solid #e0c97f;
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.pause-row button { margin-top: 0; padding: 6px 12px; font-size: 13px; }
 
 .error { color: #c62828; min-height: 18px; }
 .hint { color: #7a6647; font-size: 14px; }

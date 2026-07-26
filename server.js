@@ -40,10 +40,11 @@ const rooms = new Map(); // code -> room
 
 // room = {
 //   code, password, playerCount,
-//   players: [{ ws, name, ready, connected }],   // index = seat = color
+//   players: [{ ws, name, ready, connected, eliminated }],  // index = seat = color
 //   started, board, moves, current, winner, winLine,
 //   undoRequest: { from, votes: Set } | null,
-//   playAgain: Set
+//   playAgain: Set,
+//   departed: Set   // seats that lost connection mid-game; game pauses while non-empty
 // }
 
 function genCode() {
@@ -113,6 +114,7 @@ function startGame(room) {
   room.winLine = null;
   room.undoRequest = null;
   room.playAgain = new Set();
+  room.departed = new Set();
   broadcast(room, {
     type: "start",
     players: room.players.map((p) => p.name),
@@ -152,10 +154,10 @@ const handlers = {
       code,
       password: String(msg.password || ""),
       playerCount,
-      players: [{ ws, name, ready: false, connected: true }],
+      players: [{ ws, name, ready: false, connected: true, eliminated: false }],
       started: false,
       board: null, moves: [], current: 0, winner: -1, winLine: null,
-      undoRequest: null, playAgain: new Set(),
+      undoRequest: null, playAgain: new Set(), departed: new Set(),
     };
     rooms.set(code, room);
     ws.roomCode = code;
@@ -172,12 +174,41 @@ const handlers = {
     if (!room) return send(ws, { type: "error", message: "Room not found. Check the room code." });
     if (room.password !== String(msg.password || ""))
       return send(ws, { type: "error", message: "Wrong password." });
-    if (room.started)
-      return send(ws, { type: "error", message: "This match has already started. Late joining is not allowed." });
+
+    if (room.started) {
+      // Mid-game rejoin: reclaim a disconnected (but not forfeited) seat with
+      // the same nickname. Otherwise late joining is rejected.
+      const idx = room.players.findIndex(
+        (p) => !p.connected && !p.eliminated && p.name === name
+      );
+      if (idx < 0)
+        return send(ws, { type: "error", message: "This match has already started. Late joining is not allowed." });
+      const seat = room.players[idx];
+      seat.ws = ws;
+      seat.connected = true;
+      ws.roomCode = code;
+      ws.playerIndex = idx;
+      room.departed.delete(idx);
+      send(ws, { type: "joined", code, playerIndex: idx, rejoined: true });
+      send(ws, {
+        type: "sync",
+        players: room.players.map((p) => p.name),
+        eliminated: room.players.map((p) => !!p.eliminated),
+        playerCount: room.playerCount,
+        pieces: room.moves.map((m) => ({ r: m.r, c: m.c, player: m.player })),
+        current: room.current,
+        winner: room.winner,
+        winLine: room.winLine,
+        departed: [...room.departed],
+      });
+      broadcast(room, { type: "player_rejoined", index: idx });
+      return;
+    }
+
     if (room.players.length >= room.playerCount)
       return send(ws, { type: "error", message: "Room is full." });
     const idx = room.players.length;
-    room.players.push({ ws, name, ready: false, connected: true });
+    room.players.push({ ws, name, ready: false, connected: true, eliminated: false });
     ws.roomCode = code;
     ws.playerIndex = idx;
     send(ws, { type: "joined", code, playerIndex: idx });
@@ -199,7 +230,7 @@ const handlers = {
 
   move(ws, msg) {
     const room = findRoom(ws);
-    if (!room || !room.started || room.winner >= 0) return;
+    if (!room || !room.started || room.winner >= 0 || room.departed.size) return;
     if (ws.playerIndex !== room.current) return;
     const r = Number(msg.r), c = Number(msg.c);
     if (!(r >= 0 && r < SIZE && c >= 0 && c < SIZE) || room.board[r][c] !== -1) return;
@@ -222,7 +253,7 @@ const handlers = {
 
   undo_request(ws) {
     const room = findRoom(ws);
-    if (!room || !room.started || room.winner >= 0 || room.undoRequest) return;
+    if (!room || !room.started || room.winner >= 0 || room.undoRequest || room.departed.size) return;
     const last = room.moves[room.moves.length - 1];
     if (!last || last.player !== ws.playerIndex)
       return send(ws, { type: "error", message: "You can only take back your own last move." });
@@ -261,6 +292,49 @@ const handlers = {
       startGame(room);
     }
   },
+
+  // Intentional leave (confirmed in the UI): the seat is forfeited and cannot
+  // be rejoined. Mid-game, the match continues without that seat.
+  leave(ws) {
+    const room = findRoom(ws);
+    if (!room) return;
+    ws.leftIntentionally = true;
+    const idx = ws.playerIndex;
+
+    if (idx === 0) {
+      return closeRoom(room, "The room owner left. The room has been closed.");
+    }
+    if (!room.started) {
+      room.players.splice(idx, 1);
+      room.players.forEach((p, i) => (p.ws.playerIndex = i));
+      broadcast(room, lobbyState(room));
+    } else {
+      const p = room.players[idx];
+      p.connected = false;
+      p.eliminated = true;
+      room.departed.delete(idx);
+      if (room.undoRequest && room.undoRequest.from === idx) room.undoRequest = null;
+      if (connectedCount(room) === 0)
+        return closeRoom(room, "All players left. The room has been closed.");
+      if (room.winner < 0 && room.current === idx) nextTurn(room);
+      broadcast(room, { type: "player_eliminated", index: idx, next: room.current });
+    }
+    ws.close();
+  },
+
+  // Remaining players choose to continue without a disconnected player:
+  // the seat is forfeited and the paused game resumes.
+  continue_without(ws, msg) {
+    const room = findRoom(ws);
+    if (!room || !room.started) return;
+    const idx = Number(msg.index);
+    if (!room.departed.has(idx)) return;
+    room.departed.delete(idx);
+    room.players[idx].eliminated = true;
+    if (room.undoRequest && room.undoRequest.from === idx) room.undoRequest = null;
+    if (room.winner < 0 && room.current === idx) nextTurn(room);
+    broadcast(room, { type: "continued", index: idx, next: room.current });
+  },
 };
 
 wss.on("connection", (ws) => {
@@ -279,6 +353,7 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
+    if (ws.leftIntentionally) return; // already handled by the 'leave' message
     const room = findRoom(ws);
     if (!room) return;
     const idx = ws.playerIndex;
@@ -293,9 +368,12 @@ wss.on("connection", (ws) => {
       room.players.forEach((p, i) => (p.ws.playerIndex = i));
       broadcast(room, lobbyState(room));
     } else {
-      room.players[idx].connected = false;
-      if (connectedCount(room) < 2) {
-        return closeRoom(room, "Too many players left. The room has been closed.");
+      // Accidental disconnect mid-game: reserve the seat for reconnection and
+      // pause the match until the player rejoins or the others continue without them.
+      const p = room.players[idx];
+      p.connected = false;
+      if (connectedCount(room) === 0) {
+        return closeRoom(room, "All players left. The room has been closed.");
       }
       if (room.undoRequest) {
         if (room.undoRequest.from === idx) room.undoRequest = null;
@@ -304,12 +382,8 @@ wss.on("connection", (ws) => {
           if (room.undoRequest.votes.size === 0) applyUndo(room);
         }
       }
-      if (room.winner < 0 && room.current === idx) {
-        const next = nextTurn(room);
-        broadcast(room, { type: "player_left", index: idx, next });
-      } else {
-        broadcast(room, { type: "player_left", index: idx, next: room.current });
-      }
+      room.departed.add(idx);
+      broadcast(room, { type: "player_disconnected", index: idx, name: p.name });
     }
   });
 });
